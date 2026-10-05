@@ -19,18 +19,25 @@ public class GameView extends View implements SensorEventListener{
         START, PLAYING, PAUSED, RANKING, GAME_OVER
     }
     private GameState gameState = GameState.START;
-
+    private float distance = 0f;
     private float playerX = 400f;
     private float playerY = 1200f;
     private float playerSize = 100f;
+    private float speed = 1f;
     private int score = 0;
 
     private SensorManager sensorManager;
     private Sensor accelerometer;
     private float tilt = 0f;
+    private float lastTouchY;
     private static final float ALPHA = 0.8f;
     private static final float DEAD_ZONE = 0.5f;
     private static final float SENSITIVITY = 3.5f;
+    private static final float MIN_SPEED = 0.5f;
+    private static final float MAX_SPEED = 3f;
+    private static final float TOUCH_FACTOR = 0.004f;
+
+    private boolean isSwiping = false;
     private final Runnable gameLoop = new Runnable() {
         @Override
         public void run() {
@@ -68,7 +75,8 @@ public class GameView extends View implements SensorEventListener{
     }
     private void update() {
         if (gameState == GameState.PLAYING) {
-            score++;
+            distance += speed;
+            score = (int) distance;
             if (Math.abs(tilt) > DEAD_ZONE) {
                 playerX += tilt * SENSITIVITY;
             }
@@ -123,7 +131,7 @@ public class GameView extends View implements SensorEventListener{
 
         paint.setColor(Color.BLACK);
         paint.setTextSize(50f);
-        canvas.drawText("Distance: " + score + " m", 50, 100, paint);
+        canvas.drawText("Vitesse: x" + String.format("%.1f", speed), 50, 170, paint);
     }
 
     private void drawPauseScreen(Canvas canvas) {
@@ -147,17 +155,32 @@ public class GameView extends View implements SensorEventListener{
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (event.getAction() == MotionEvent.ACTION_DOWN) {
-            if (gameState == GameState.START) {
-                resetPlayer();
-                score = 0;
-                gameState = GameState.PLAYING;
-            } else if (gameState == GameState.GAME_OVER) {
-                resetPlayer();
-                score = 0;
-                gameState = GameState.PLAYING;
-            }
-            return true;
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                if (gameState == GameState.START || gameState == GameState.GAME_OVER) {
+                    resetPlayer();
+                    score = 0;
+                    speed = 1f;
+                    gameState = GameState.PLAYING;
+                } else if (gameState == GameState.PLAYING) {
+                    lastTouchY = event.getY();
+                    isSwiping = true;
+                }
+                return true;
+
+            case MotionEvent.ACTION_MOVE:
+                if (gameState == GameState.PLAYING && isSwiping) {
+                    float dy = lastTouchY - event.getY();   // positif = doigt qui monte
+                    speed += dy * TOUCH_FACTOR;
+                    speed = Math.max(MIN_SPEED, Math.min(MAX_SPEED, speed));
+                    lastTouchY = event.getY();
+                }
+                return true;
+
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                isSwiping = false;
+                return true;
         }
         return super.onTouchEvent(event);
     }
