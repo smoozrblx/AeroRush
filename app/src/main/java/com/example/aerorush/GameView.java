@@ -10,6 +10,8 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.SystemClock;
+import android.view.ViewConfiguration;
 
 public class GameView extends View implements SensorEventListener{
 
@@ -37,6 +39,16 @@ public class GameView extends View implements SensorEventListener{
     private static final float MAX_SPEED = 3f;
     private static final float TOUCH_FACTOR = 0.004f;
 
+    private static final long DOUBLE_TAP_MS = 300;
+    private static final long NITRO_DURATION_MS = 2000;
+    private static final long NITRO_COOLDOWN_MS = 5000;
+    private static final float NITRO_MULTIPLIER = 2f;
+    private long lastTapTime = 0;
+    private long nitroEndTime = 0;
+    private long nitroReadyTime = 0;
+    private float downX, downY;
+    private boolean moved = false;
+    private int touchSlop;
     private boolean isSwiping = false;
     private final Runnable gameLoop = new Runnable() {
         @Override
@@ -50,11 +62,33 @@ public class GameView extends View implements SensorEventListener{
     //Constructeur
     public GameView(Context context) {
         super(context);
+        touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         paint = new Paint();
         sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
     }
 
+    private boolean isNitroActive() {
+        return SystemClock.uptimeMillis() < nitroEndTime;
+    }
+
+    public float getEffectiveSpeed() {
+        return isNitroActive() ? speed * NITRO_MULTIPLIER : speed;
+    }
+
+    private void activateNitro() {
+        long now = SystemClock.uptimeMillis();
+        if (now >= nitroReadyTime) {
+            nitroEndTime = now + NITRO_DURATION_MS;
+            nitroReadyTime = now + NITRO_COOLDOWN_MS;
+        }
+    }
+
+    private void resetNitro() {
+        nitroEndTime = 0;
+        nitroReadyTime = 0;
+        lastTapTime = 0;
+    }
     public void startGame() {
         removeCallbacks(gameLoop);
         post(gameLoop);
@@ -75,16 +109,15 @@ public class GameView extends View implements SensorEventListener{
     }
     private void update() {
         if (gameState == GameState.PLAYING) {
-            distance += speed;
+            distance += getEffectiveSpeed();
             score = (int) distance;
+
             if (Math.abs(tilt) > DEAD_ZONE) {
                 playerX += tilt * SENSITIVITY;
             }
-            if (getWidth() > 0 && getHeight() > 0) {
-                if (playerX < 0 || playerX + playerSize > getWidth() ||
-                        playerY < 0 || playerY + playerSize > getHeight()) {
-                    gameState = GameState.GAME_OVER;
-                }
+
+            if (getWidth() > 0) {
+                playerX = Math.max(0f, Math.min(getWidth() - playerSize, playerX));
             }
         }
     }
@@ -126,12 +159,16 @@ public class GameView extends View implements SensorEventListener{
     private void drawGame(Canvas canvas) {
         canvas.drawColor(Color.parseColor("#87CEEB"));
 
-        paint.setColor(Color.parseColor("#FF8C00"));
+        paint.setColor(isNitroActive() ? Color.parseColor("#FFD700") : Color.parseColor("#FF8C00"));
         canvas.drawRect(playerX, playerY, playerX + playerSize, playerY + playerSize, paint);
-
+        if (isNitroActive()) {
+            paint.setColor(Color.RED);
+            paint.setTextSize(70f);
+            canvas.drawText("NITRO !", 50, 260, paint);
+        }
         paint.setColor(Color.BLACK);
         paint.setTextSize(50f);
-        canvas.drawText("Vitesse: x" + String.format("%.1f", speed), 50, 170, paint);
+        canvas.drawText("Vitesse: x" + String.format("%.1f", getEffectiveSpeed()), 50, 170, paint);
     }
 
     private void drawPauseScreen(Canvas canvas) {
@@ -160,17 +197,26 @@ public class GameView extends View implements SensorEventListener{
                 if (gameState == GameState.START || gameState == GameState.GAME_OVER) {
                     resetPlayer();
                     score = 0;
+                    distance = 0f;
                     speed = 1f;
+                    resetNitro();
                     gameState = GameState.PLAYING;
                 } else if (gameState == GameState.PLAYING) {
-                    lastTouchY = event.getY();
+                    downX = event.getX();
+                    downY = event.getY();
+                    lastTouchY = downY;
+                    moved = false;
                     isSwiping = true;
                 }
                 return true;
 
             case MotionEvent.ACTION_MOVE:
                 if (gameState == GameState.PLAYING && isSwiping) {
-                    float dy = lastTouchY - event.getY();   // positif = doigt qui monte
+                    if (Math.abs(event.getX() - downX) > touchSlop
+                            || Math.abs(event.getY() - downY) > touchSlop) {
+                        moved = true;
+                    }
+                    float dy = lastTouchY - event.getY();
                     speed += dy * TOUCH_FACTOR;
                     speed = Math.max(MIN_SPEED, Math.min(MAX_SPEED, speed));
                     lastTouchY = event.getY();
@@ -178,6 +224,18 @@ public class GameView extends View implements SensorEventListener{
                 return true;
 
             case MotionEvent.ACTION_UP:
+                if (gameState == GameState.PLAYING && isSwiping && !moved) {
+                    long now = SystemClock.uptimeMillis();
+                    if (now - lastTapTime <= DOUBLE_TAP_MS) {
+                        activateNitro();
+                        lastTapTime = 0;
+                    } else {
+                        lastTapTime = now;
+                    }
+                }
+                isSwiping = false;
+                return true;
+
             case MotionEvent.ACTION_CANCEL:
                 isSwiping = false;
                 return true;
