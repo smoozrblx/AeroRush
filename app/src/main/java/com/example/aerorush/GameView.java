@@ -6,8 +6,12 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.view.MotionEvent;
 import android.view.View;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 
-public class GameView extends View {
+public class GameView extends View implements SensorEventListener{
 
     private Paint paint;
 
@@ -21,6 +25,12 @@ public class GameView extends View {
     private float playerSize = 100f;
     private int score = 0;
 
+    private SensorManager sensorManager;
+    private Sensor accelerometer;
+    private float tilt = 0f;
+    private static final float ALPHA = 0.8f;
+    private static final float DEAD_ZONE = 0.5f;
+    private static final float SENSITIVITY = 3.5f;
     private final Runnable gameLoop = new Runnable() {
         @Override
         public void run() {
@@ -30,19 +40,38 @@ public class GameView extends View {
         }
     };
 
+    //Constructeur
     public GameView(Context context) {
         super(context);
         paint = new Paint();
+        sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
     }
 
     public void startGame() {
+        removeCallbacks(gameLoop);
         post(gameLoop);
     }
 
+    public void stopGame(){
+        removeCallbacks(gameLoop);
+    }
+
+    public void startSensor(){
+        if (accelerometer != null){
+            sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
+        }
+    }
+
+    public void stopSensor(){
+        sensorManager.unregisterListener(this);
+    }
     private void update() {
         if (gameState == GameState.PLAYING) {
             score++;
-
+            if (Math.abs(tilt) > DEAD_ZONE) {
+                playerX += tilt * SENSITIVITY;
+            }
             if (getWidth() > 0 && getHeight() > 0) {
                 if (playerX < 0 || playerX + playerSize > getWidth() ||
                         playerY < 0 || playerY + playerSize > getHeight()) {
@@ -87,7 +116,7 @@ public class GameView extends View {
     }
 
     private void drawGame(Canvas canvas) {
-        canvas.drawColor(Color.parseColor("#87CEEB")); // Ciel
+        canvas.drawColor(Color.parseColor("#87CEEB"));
 
         paint.setColor(Color.parseColor("#FF8C00"));
         canvas.drawRect(playerX, playerY, playerX + playerSize, playerY + playerSize, paint);
@@ -118,26 +147,41 @@ public class GameView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        int action = event.getAction();
-
-        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
-
-            if (gameState == GameState.START && action == MotionEvent.ACTION_DOWN) {
+        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+            if (gameState == GameState.START) {
+                resetPlayer();
+                score = 0;
                 gameState = GameState.PLAYING;
-            }
-            else if (gameState == GameState.PLAYING) {
-                playerX = event.getX() - (playerSize / 2);
-                playerY = event.getY() - (playerSize / 2);
-            }
-            else if (gameState == GameState.GAME_OVER && action == MotionEvent.ACTION_DOWN) {
-                playerX = 400f;
-                playerY = 1200f;
+            } else if (gameState == GameState.GAME_OVER) {
+                resetPlayer();
                 score = 0;
                 gameState = GameState.PLAYING;
             }
-
             return true;
         }
         return super.onTouchEvent(event);
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor != null && event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            tilt = ALPHA * tilt + (1 - ALPHA) * (-event.values[0]);
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        resetPlayer();
+    }
+
+    private void resetPlayer() {
+        playerX = (getWidth() - playerSize) / 2f;
+        playerY = getHeight() * 0.8f;
+        tilt = 0f;
     }
 }
