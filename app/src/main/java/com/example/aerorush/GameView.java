@@ -58,6 +58,7 @@ public class GameView extends View implements SensorEventListener{
     private final List<Obstacle> obstacles = new ArrayList<>();
     private int spawnCounter = 0;
     private final Random random = new Random();
+    private long gameOverTime = 0;
 
     private final Runnable gameLoop = new Runnable() {
         @Override
@@ -130,6 +131,7 @@ public class GameView extends View implements SensorEventListener{
                     gameState = GameState.GAME_OVER;
                     return;
                 }
+                int spawnFrequency = 45;
 
                 // Génération des obstacles
                 spawnCounter++;
@@ -139,7 +141,7 @@ public class GameView extends View implements SensorEventListener{
                     float obsHeight = 80f;
                     float obsX = random.nextFloat() * (screenWidth - obsWidth);
                     float obsY = -obsHeight;
-                    float obsSpeed = 10f + (score / 150f);
+                    float obsSpeed = getObstacleSpeed();
 
                     obstacles.add(new Obstacle(obsX, obsY, obsWidth, obsHeight, obsSpeed));
                 }
@@ -149,6 +151,7 @@ public class GameView extends View implements SensorEventListener{
                 while (iterator.hasNext()) {
                     Obstacle obstacle = iterator.next();
                     obstacle.update();
+                    obstacle.setSpeed(getObstacleSpeed());
 
                     if (obstacle.collidesWith(playerX, playerY, playerSize)) {
                         gameState = GameState.GAME_OVER;
@@ -168,6 +171,10 @@ public class GameView extends View implements SensorEventListener{
                 }
             }
         }
+    }
+
+    public float getObstacleSpeed(){
+        return (10f + (score / 150f))* speed;
     }
 
     @Override
@@ -252,13 +259,15 @@ public class GameView extends View implements SensorEventListener{
     public boolean onTouchEvent(MotionEvent event) {
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
+                gameOverTime = SystemClock.uptimeMillis();
                 if (gameState == GameState.START || gameState == GameState.GAME_OVER) {
-                    resetPlayer();
-                    score = 0;
-                    distance = 0f;
-                    speed = 1f;
-                    resetNitro();
+                    if (gameState == GameState.GAME_OVER
+                            && SystemClock.uptimeMillis() - gameOverTime < 700) {
+                        return true;   // appui direct apres le game over, on l'ignore
+                    }
+                    resetGame();
                     gameState = GameState.PLAYING;
+                    performClick();
                 } else if (gameState == GameState.PLAYING) {
                     downX = event.getX();
                     downY = event.getY();
@@ -280,27 +289,6 @@ public class GameView extends View implements SensorEventListener{
                     lastTouchY = event.getY();
                 }
                 return true;
-//        int action = event.getAction();
-//
-//        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
-//
-//            if (gameState == GameState.START && action == MotionEvent.ACTION_DOWN) {
-//                gameState = GameState.PLAYING;
-//                performClick();
-//            }
-//            else if (gameState == GameState.PLAYING) {
-//                playerX = event.getX() - (playerSize / 2);
-//                playerY = event.getY() - (playerSize / 2);
-//            }
-//            else if (gameState == GameState.GAME_OVER && action == MotionEvent.ACTION_DOWN) {
-//                playerX = 400f;
-//                playerY = 1200f;
-//                score = 0;
-//                obstacles.clear();
-//                spawnCounter = 0;
-//                gameState = GameState.PLAYING;
-//                performClick();
-//            }
 
             case MotionEvent.ACTION_UP:
                 if (gameState == GameState.PLAYING && isSwiping && !moved) {
@@ -343,5 +331,17 @@ public class GameView extends View implements SensorEventListener{
         playerX = (getWidth() - playerSize) / 2f;
         playerY = getHeight() * 0.8f;
         tilt = 0f;
+    }
+
+    private void resetGame() {
+        resetPlayer();
+        obstacles.clear();   // supprime tous les anciens obstacles
+        spawnCounter = 0;    // repart de zéro pour l'apparition
+        score = 0;
+        distance = 0f;
+        speed = 1f;
+        isSwiping = false;
+        moved = false;
+        resetNitro();
     }
 }

@@ -10,7 +10,7 @@ public class Obstacle {
     private float posY;
     private final float width;
     private final float height;
-    private final float speed;
+    private float speed;
 
     public Obstacle(float posX, float posY, float width, float height, float speed) {
         this.posX = posX;
@@ -38,5 +38,9 @@ public class Obstacle {
     public void draw(Canvas canvas, Paint paint) {
         paint.setColor(Color.parseColor("#555555"));
         canvas.drawRect(posX, posY, posX + width, posY + height, paint);
+    }
+
+    public void setSpeed(float speed) {
+        this.speed = speed;
     }
 }
