@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.RectF;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -56,11 +57,17 @@ public class GameView extends View implements SensorEventListener {
     private float downX, downY;
     private boolean moved = false;
     private int touchSlop;
-    feedback = new FeedbackManager(context);
     private boolean isSwiping = false;
     private final List<Obstacle> obstacles = new ArrayList<>();
     private int spawnCounter = 0;
     private final Random random = new Random();
+
+    // --- Pause ---
+    private float dp;
+    private final RectF pauseButton = new RectF();
+    private final RectF resumeButton = new RectF();
+    private final RectF menuButton = new RectF();
+    private long pauseStartTime = 0;
 
     private final Runnable gameLoop = new Runnable() {
         @Override
@@ -73,8 +80,10 @@ public class GameView extends View implements SensorEventListener {
 
     public GameView(Context context) {
         super(context);
+        dp = context.getResources().getDisplayMetrics().density;
         touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         paint = new Paint();
+        feedback = new FeedbackManager(context);
         sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         if (sensorManager != null) {
             accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -103,6 +112,7 @@ public class GameView extends View implements SensorEventListener {
         gameState = GameState.GAME_OVER;
         feedback.vibrateCrash();
     }
+
     private void resetNitro() {
         nitroEndTime = 0;
         nitroReadyTime = 0;
@@ -116,6 +126,24 @@ public class GameView extends View implements SensorEventListener {
 
     public void stopGame() {
         removeCallbacks(gameLoop);
+    }
+
+    // --- Pause / reprise ---
+    public void pauseGame() {
+        if (gameState != GameState.PLAYING) return;
+        gameState = GameState.PAUSED;
+        pauseStartTime = SystemClock.uptimeMillis();
+        isSwiping = false;
+    }
+
+    private void resumeGame() {
+        // Le nitro se base sur l'horloge : on décale ses échéances de la durée de la pause
+        long pausedFor = SystemClock.uptimeMillis() - pauseStartTime;
+        if (nitroEndTime > 0) nitroEndTime += pausedFor;
+        if (nitroReadyTime > 0) nitroReadyTime += pausedFor;
+        tilt = 0f;
+        lastTapTime = 0;
+        gameState = GameState.PLAYING;
     }
 
     public void startSensor() {
@@ -139,15 +167,15 @@ public class GameView extends View implements SensorEventListener {
             int screenHeight = getHeight();
 
             if (screenWidth > 0 && screenHeight > 0) {
-                if (playerX < 0 || playerX + playerSize > screenWidth ||
-                        playerY < 0 || playerY + playerSize > screenHeight) {
-                    gameState = GameState.GAME_OVER;
-                    return;
-                }
 
-                // Génération des obstacles
+                // Déplacement latéral (accéléromètre), avion bloqué contre les bords
+                if (Math.abs(tilt) > DEAD_ZONE) {
+                    playerX += tilt * SENSITIVITY;
+                }
+                playerX = Math.max(0f, Math.min(screenWidth - playerSize, playerX));
+
                 spawnCounter++;
-                if (spawnCounter >= 45) { // Génère un obstacle toutes les ~0.75s
+                if (spawnCounter >= 45) {
                     spawnCounter = 0;
                     float obsWidth = 150f + random.nextFloat() * 200f;
                     float obsHeight = 80f;
@@ -158,28 +186,19 @@ public class GameView extends View implements SensorEventListener {
                     obstacles.add(new Obstacle(obsX, obsY, obsWidth, obsHeight, obsSpeed));
                 }
 
-                // Mise à jour et détection des collisions
                 Iterator<Obstacle> iterator = obstacles.iterator();
                 while (iterator.hasNext()) {
                     Obstacle obstacle = iterator.next();
                     obstacle.update();
 
                     if (obstacle.collidesWith(playerX, playerY, playerSize)) {
-                        gameState = GameState.GAME_OVER;
+                        triggerGameOver();
                         break;
                     }
 
                     if (obstacle.isOffScreen(screenHeight)) {
                         iterator.remove();
                     }
-                }
-
-                if (Math.abs(tilt) > DEAD_ZONE) {
-                    playerX += tilt * SENSITIVITY;
-                }
-
-                if (getWidth() > 0) {
-                    playerX = Math.max(0f, Math.min(getWidth() - playerSize, playerX));
                 }
             }
         }
@@ -236,11 +255,39 @@ public class GameView extends View implements SensorEventListener {
 
         paint.setColor(Color.BLACK);
         paint.setTextSize(50f);
+        canvas.drawText("Distance: " + score + " m", 50, 100, paint);
         canvas.drawText("Vitesse: x" + String.format("%.1f", getEffectiveSpeed()), 50, 170, paint);
+
+        // Bouton pause (en bas à droite, accessible au pouce)
+        paint.setColor(Color.argb(200, 44, 62, 80));
+        canvas.drawRoundRect(pauseButton, 16 * dp, 16 * dp, paint);
+        paint.setColor(Color.WHITE);
+        float cx = pauseButton.centerX(), cy = pauseButton.centerY();
+        float bar = 6 * dp, h = 14 * dp;
+        canvas.drawRect(cx - 9 * dp, cy - h, cx - 9 * dp + bar, cy + h, paint);
+        canvas.drawRect(cx + 3 * dp, cy - h, cx + 3 * dp + bar, cy + h, paint);
     }
 
     private void drawPauseScreen(Canvas canvas) {
+        drawGame(canvas);                              // jeu figé en arrière-plan
+        canvas.drawColor(Color.argb(170, 0, 0, 0));    // voile sombre
 
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(80f);
+        canvas.drawText("PAUSE", getWidth() / 2f, getHeight() * 0.28f, paint);
+
+        drawButton(canvas, resumeButton, "Reprendre", Color.parseColor("#FF8C00"));
+        drawButton(canvas, menuButton, "Menu", Color.parseColor("#2C3E50"));
+        paint.setTextAlign(Paint.Align.LEFT);          // valeur par défaut
+    }
+
+    private void drawButton(Canvas canvas, RectF r, String label, int color) {
+        paint.setColor(color);
+        canvas.drawRoundRect(r, 24 * dp, 24 * dp, paint);
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(50f);
+        canvas.drawText(label, r.centerX(), r.centerY() + 18f, paint);
     }
 
     private void drawRankingScreen(Canvas canvas) {
@@ -278,11 +325,21 @@ public class GameView extends View implements SensorEventListener {
                     gameState = GameState.PLAYING;
                     performClick();
                 } else if (gameState == GameState.PLAYING) {
-                    downX = event.getX();
-                    downY = event.getY();
-                    lastTouchY = downY;
-                    moved = false;
-                    isSwiping = true;
+                    if (pauseButton.contains(event.getX(), event.getY())) {
+                        pauseGame();     // le bouton ne déclenche ni swipe ni nitro
+                    } else {
+                        downX = event.getX();
+                        downY = event.getY();
+                        lastTouchY = downY;
+                        moved = false;
+                        isSwiping = true;
+                    }
+                } else if (gameState == GameState.PAUSED) {
+                    if (resumeButton.contains(event.getX(), event.getY())) {
+                        resumeGame();
+                    } else if (menuButton.contains(event.getX(), event.getY())) {
+                        gameState = GameState.START;
+                    }
                 }
                 return true;
 
@@ -334,6 +391,19 @@ public class GameView extends View implements SensorEventListener {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         resetPlayer();
+        layoutButtons();
+    }
+
+    private void layoutButtons() {
+        float size = 64 * dp, margin = 16 * dp;
+        pauseButton.set(getWidth() - margin - size, getHeight() - margin - size,
+                getWidth() - margin, getHeight() - margin);
+
+        float bw = getWidth() * 0.6f, bh = 72 * dp;
+        float left = (getWidth() - bw) / 2f;
+        resumeButton.set(left, getHeight() * 0.40f, left + bw, getHeight() * 0.40f + bh);
+        menuButton.set(left, getHeight() * 0.40f + bh + 24 * dp,
+                left + bw, getHeight() * 0.40f + 2 * bh + 24 * dp);
     }
 
     private void resetPlayer() {
