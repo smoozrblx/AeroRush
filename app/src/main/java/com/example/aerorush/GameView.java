@@ -59,6 +59,12 @@ public class GameView extends View implements SensorEventListener{
     private int spawnCounter = 0;
     private final Random random = new Random();
     private long gameOverTime = 0;
+    private float spawnFrequency = 60f;                  // frames entre deux obstacles (valeur actuelle)
+    private static final float BASE_SPAWN_FRAMES = 60f;  // valeur à vitesse normale
+    private static final float MIN_SPAWN_FRAMES = 12f;   // plancher pour éviter un écran saturé
+    private static final float MAX_SPAWN_FRAMES = 120f;  // plafond quand tout est très lent
+    private static final float BASE_OBSTACLE_SPEED = 10f;
+    private static final float MAX_OBSTACLE_SPEED = 40f;  // vitesse maximale des obstacles
 
     private final Runnable gameLoop = new Runnable() {
         @Override
@@ -134,8 +140,9 @@ public class GameView extends View implements SensorEventListener{
                 int spawnFrequency = 45;
 
                 // Génération des obstacles
+                updateSpawnFrequency();
                 spawnCounter++;
-                if (spawnCounter >= 45) { // Génère un obstacle toutes les ~0.75s
+                if (spawnCounter >= spawnFrequency) {
                     spawnCounter = 0;
                     float obsWidth = 150f + random.nextFloat() * 200f;
                     float obsHeight = 80f;
@@ -173,8 +180,9 @@ public class GameView extends View implements SensorEventListener{
         }
     }
 
-    public float getObstacleSpeed(){
-        return (10f + (score / 150f))* speed;
+    public float getObstacleSpeed() {
+        float s = (BASE_OBSTACLE_SPEED + (score / 150f)) * speed;
+        return Math.min(s, MAX_OBSTACLE_SPEED);
     }
 
     @Override
@@ -337,11 +345,17 @@ public class GameView extends View implements SensorEventListener{
         resetPlayer();
         obstacles.clear();   // supprime tous les anciens obstacles
         spawnCounter = 0;    // repart de zéro pour l'apparition
+        spawnFrequency = BASE_SPAWN_FRAMES;
         score = 0;
         distance = 0f;
         speed = 1f;
         isSwiping = false;
         moved = false;
         resetNitro();
+    }
+
+    private void updateSpawnFrequency() {
+        float f = BASE_SPAWN_FRAMES * BASE_OBSTACLE_SPEED / getObstacleSpeed();
+        spawnFrequency = Math.max(MIN_SPAWN_FRAMES, Math.min(MAX_SPAWN_FRAMES, f));
     }
 }
