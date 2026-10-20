@@ -13,11 +13,16 @@ import android.hardware.SensorManager;
 import android.os.SystemClock;
 import android.view.ViewConfiguration;
 
-public class GameView extends View implements SensorEventListener{
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
 
-    private Paint paint;
+public class GameView extends View {
 
-    private enum GameState {
+    private final Paint paint;
+
+    public enum GameState {
         START, PLAYING, PAUSED, RANKING, GAME_OVER
     }
     private GameState gameState = GameState.START;
@@ -50,6 +55,10 @@ public class GameView extends View implements SensorEventListener{
     private boolean moved = false;
     private int touchSlop;
     private boolean isSwiping = false;
+    private final List<Obstacle> obstacles = new ArrayList<>();
+    private int spawnCounter = 0;
+    private final Random random = new Random();
+
     private final Runnable gameLoop = new Runnable() {
         @Override
         public void run() {
@@ -112,6 +121,44 @@ public class GameView extends View implements SensorEventListener{
             distance += getEffectiveSpeed();
             score = (int) distance;
 
+            int screenWidth = getWidth();
+            int screenHeight = getHeight();
+
+            if (screenWidth > 0 && screenHeight > 0) {
+                if (playerX < 0 || playerX + playerSize > screenWidth ||
+                        playerY < 0 || playerY + playerSize > screenHeight) {
+                    gameState = GameState.GAME_OVER;
+                    return;
+                }
+
+                // Génération des obstacles
+                spawnCounter++;
+                if (spawnCounter >= 45) { // Génère un obstacle toutes les ~0.75s
+                    spawnCounter = 0;
+                    float obsWidth = 150f + random.nextFloat() * 200f;
+                    float obsHeight = 80f;
+                    float obsX = random.nextFloat() * (screenWidth - obsWidth);
+                    float obsY = -obsHeight;
+                    float obsSpeed = 10f + (score / 150f);
+
+                    obstacles.add(new Obstacle(obsX, obsY, obsWidth, obsHeight, obsSpeed));
+                }
+
+                // Mise à jour et détection des collisions
+                Iterator<Obstacle> iterator = obstacles.iterator();
+                while (iterator.hasNext()) {
+                    Obstacle obstacle = iterator.next();
+                    obstacle.update();
+
+                    if (obstacle.collidesWith(playerX, playerY, playerSize)) {
+                        gameState = GameState.GAME_OVER;
+                        break;
+                    }
+
+                    if (obstacle.isOffScreen(screenHeight)) {
+                        iterator.remove();
+                    }
+                }
             if (Math.abs(tilt) > DEAD_ZONE) {
                 playerX += tilt * SENSITIVITY;
             }
@@ -166,6 +213,11 @@ public class GameView extends View implements SensorEventListener{
             paint.setTextSize(70f);
             canvas.drawText("NITRO !", 50, 260, paint);
         }
+
+        for (Obstacle obstacle : obstacles) {
+            obstacle.draw(canvas, paint);
+        }
+
         paint.setColor(Color.BLACK);
         paint.setTextSize(50f);
         canvas.drawText("Vitesse: x" + String.format("%.1f", getEffectiveSpeed()), 50, 170, paint);
@@ -188,6 +240,11 @@ public class GameView extends View implements SensorEventListener{
         paint.setTextSize(50f);
         canvas.drawText("Distance parcourue : " + score + " m", 100, 500, paint);
         canvas.drawText("Touchez pour rejouer", 100, 700, paint);
+    }
+
+    @Override
+    public boolean performClick() {
+        return super.performClick();
     }
 
     @Override
@@ -222,6 +279,27 @@ public class GameView extends View implements SensorEventListener{
                     lastTouchY = event.getY();
                 }
                 return true;
+        int action = event.getAction();
+
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
+
+            if (gameState == GameState.START && action == MotionEvent.ACTION_DOWN) {
+                gameState = GameState.PLAYING;
+                performClick();
+            }
+            else if (gameState == GameState.PLAYING) {
+                playerX = event.getX() - (playerSize / 2);
+                playerY = event.getY() - (playerSize / 2);
+            }
+            else if (gameState == GameState.GAME_OVER && action == MotionEvent.ACTION_DOWN) {
+                playerX = 400f;
+                playerY = 1200f;
+                score = 0;
+                obstacles.clear();
+                spawnCounter = 0;
+                gameState = GameState.PLAYING;
+                performClick();
+            }
 
             case MotionEvent.ACTION_UP:
                 if (gameState == GameState.PLAYING && isSwiping && !moved) {
