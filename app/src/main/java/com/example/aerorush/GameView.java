@@ -4,13 +4,13 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.view.MotionEvent;
-import android.view.View;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.SystemClock;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewConfiguration;
 
 import java.util.ArrayList;
@@ -18,13 +18,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 
-public class GameView extends View {
+public class GameView extends View implements SensorEventListener {
 
     private final Paint paint;
 
     public enum GameState {
         START, PLAYING, PAUSED, RANKING, GAME_OVER
     }
+
     private GameState gameState = GameState.START;
     private float distance = 0f;
     private float playerX = 400f;
@@ -35,6 +36,7 @@ public class GameView extends View {
 
     private SensorManager sensorManager;
     private Sensor accelerometer;
+    private FeedbackManager feedback;
     private float tilt = 0f;
     private float lastTouchY;
     private static final float ALPHA = 0.8f;
@@ -54,6 +56,7 @@ public class GameView extends View {
     private float downX, downY;
     private boolean moved = false;
     private int touchSlop;
+    feedback = new FeedbackManager(context);
     private boolean isSwiping = false;
     private final List<Obstacle> obstacles = new ArrayList<>();
     private int spawnCounter = 0;
@@ -68,13 +71,14 @@ public class GameView extends View {
         }
     };
 
-    //Constructeur
     public GameView(Context context) {
         super(context);
         touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         paint = new Paint();
         sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        if (sensorManager != null) {
+            accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        }
     }
 
     private boolean isNitroActive() {
@@ -90,32 +94,42 @@ public class GameView extends View {
         if (now >= nitroReadyTime) {
             nitroEndTime = now + NITRO_DURATION_MS;
             nitroReadyTime = now + NITRO_COOLDOWN_MS;
+            feedback.vibrateNitro();
         }
     }
 
+    public void triggerGameOver() {
+        if (gameState != GameState.PLAYING) return;
+        gameState = GameState.GAME_OVER;
+        feedback.vibrateCrash();
+    }
     private void resetNitro() {
         nitroEndTime = 0;
         nitroReadyTime = 0;
         lastTapTime = 0;
     }
+
     public void startGame() {
         removeCallbacks(gameLoop);
         post(gameLoop);
     }
 
-    public void stopGame(){
+    public void stopGame() {
         removeCallbacks(gameLoop);
     }
 
-    public void startSensor(){
-        if (accelerometer != null){
+    public void startSensor() {
+        if (sensorManager != null && accelerometer != null) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
         }
     }
 
-    public void stopSensor(){
-        sensorManager.unregisterListener(this);
+    public void stopSensor() {
+        if (sensorManager != null) {
+            sensorManager.unregisterListener(this);
+        }
     }
+
     private void update() {
         if (gameState == GameState.PLAYING) {
             distance += getEffectiveSpeed();
@@ -159,12 +173,14 @@ public class GameView extends View {
                         iterator.remove();
                     }
                 }
-            if (Math.abs(tilt) > DEAD_ZONE) {
-                playerX += tilt * SENSITIVITY;
-            }
 
-            if (getWidth() > 0) {
-                playerX = Math.max(0f, Math.min(getWidth() - playerSize, playerX));
+                if (Math.abs(tilt) > DEAD_ZONE) {
+                    playerX += tilt * SENSITIVITY;
+                }
+
+                if (getWidth() > 0) {
+                    playerX = Math.max(0f, Math.min(getWidth() - playerSize, playerX));
+                }
             }
         }
     }
@@ -253,11 +269,14 @@ public class GameView extends View {
             case MotionEvent.ACTION_DOWN:
                 if (gameState == GameState.START || gameState == GameState.GAME_OVER) {
                     resetPlayer();
+                    obstacles.clear();
+                    spawnCounter = 0;
                     score = 0;
                     distance = 0f;
                     speed = 1f;
                     resetNitro();
                     gameState = GameState.PLAYING;
+                    performClick();
                 } else if (gameState == GameState.PLAYING) {
                     downX = event.getX();
                     downY = event.getY();
@@ -279,27 +298,6 @@ public class GameView extends View {
                     lastTouchY = event.getY();
                 }
                 return true;
-        int action = event.getAction();
-
-        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
-
-            if (gameState == GameState.START && action == MotionEvent.ACTION_DOWN) {
-                gameState = GameState.PLAYING;
-                performClick();
-            }
-            else if (gameState == GameState.PLAYING) {
-                playerX = event.getX() - (playerSize / 2);
-                playerY = event.getY() - (playerSize / 2);
-            }
-            else if (gameState == GameState.GAME_OVER && action == MotionEvent.ACTION_DOWN) {
-                playerX = 400f;
-                playerY = 1200f;
-                score = 0;
-                obstacles.clear();
-                spawnCounter = 0;
-                gameState = GameState.PLAYING;
-                performClick();
-            }
 
             case MotionEvent.ACTION_UP:
                 if (gameState == GameState.PLAYING && isSwiping && !moved) {
@@ -323,7 +321,7 @@ public class GameView extends View {
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (event.sensor != null && event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+        if (event != null && event.sensor != null && event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             tilt = ALPHA * tilt + (1 - ALPHA) * (-event.values[0]);
         }
     }

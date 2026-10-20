@@ -13,8 +13,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         gameView = new GameView(this);
-
-        GameView gameView = new GameView(this);
         setContentView(gameView);
     }
 
