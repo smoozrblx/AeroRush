@@ -32,7 +32,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onBackPressed(){
-        gameView.pauseGame();
+    public void onBackPressed() {
+        if (!gameView.handleBack()) {
+            super.onBackPressed();
+        }
     }
 }

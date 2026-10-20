@@ -69,6 +69,13 @@ public class GameView extends View implements SensorEventListener {
     private final RectF menuButton = new RectF();
     private long pauseStartTime = 0;
 
+    // --- Scores ---
+    private ScoreManager scoreManager;
+    private List<Integer> topScores = new ArrayList<>();
+    private int bestScore = 0;
+    private boolean newRecord = false;
+    private long gameOverTime = 0;
+    private final RectF rankingButton = new RectF();
     private final Runnable gameLoop = new Runnable() {
         @Override
         public void run() {
@@ -84,6 +91,8 @@ public class GameView extends View implements SensorEventListener {
         touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         paint = new Paint();
         feedback = new FeedbackManager(context);
+        scoreManager = new ScoreManager(context);
+        refreshScores();
         sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         if (sensorManager != null) {
             accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -110,6 +119,9 @@ public class GameView extends View implements SensorEventListener {
     public void triggerGameOver() {
         if (gameState != GameState.PLAYING) return;
         gameState = GameState.GAME_OVER;
+        gameOverTime = SystemClock.uptimeMillis();
+        newRecord = scoreManager.addScore(score);
+        refreshScores();
         feedback.vibrateCrash();
     }
 
@@ -118,7 +130,10 @@ public class GameView extends View implements SensorEventListener {
         nitroReadyTime = 0;
         lastTapTime = 0;
     }
-
+    private void refreshScores() {
+        topScores = scoreManager.getTopScores();
+        bestScore = topScores.isEmpty() ? 0 : topScores.get(0);
+    }
     public void startGame() {
         removeCallbacks(gameLoop);
         post(gameLoop);
@@ -236,6 +251,10 @@ public class GameView extends View implements SensorEventListener {
         paint.setTextSize(40f);
         paint.setColor(Color.parseColor("#FF8C00"));
         canvas.drawText("Touchez pour décoller", 100, 600, paint);
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(40f);
+        canvas.drawText("Meilleur score : " + bestScore + " m", 100, 700, paint);
+        drawButton(canvas, rankingButton, "Classements", Color.parseColor("#FF8C00"));
     }
 
     private void drawGame(Canvas canvas) {
@@ -287,11 +306,33 @@ public class GameView extends View implements SensorEventListener {
         canvas.drawRoundRect(r, 24 * dp, 24 * dp, paint);
         paint.setColor(Color.WHITE);
         paint.setTextSize(50f);
+        paint.setTextAlign(Paint.Align.CENTER);
         canvas.drawText(label, r.centerX(), r.centerY() + 18f, paint);
+        paint.setTextAlign(Paint.Align.LEFT);
     }
 
     private void drawRankingScreen(Canvas canvas) {
+        canvas.drawColor(Color.parseColor("#2C3E50"));
+        float cx = getWidth() / 2f;
 
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(80f);
+        canvas.drawText("CLASSEMENT", cx, getHeight() * 0.15f, paint);
+
+        paint.setTextSize(55f);
+        if (topScores.isEmpty()) {
+            canvas.drawText("Aucune partie jouée", cx, getHeight() * 0.35f, paint);
+        } else {
+            for (int i = 0; i < topScores.size(); i++) {
+                paint.setColor(i == 0 ? Color.parseColor("#FFD700") : Color.WHITE);
+                canvas.drawText((i + 1) + ".  " + topScores.get(i) + " m",
+                        cx, getHeight() * 0.28f + i * 90f, paint);
+            }
+        }
+        paint.setTextAlign(Paint.Align.LEFT);
+
+        drawButton(canvas, rankingButton, "Retour", Color.parseColor("#FF8C00"));
     }
 
     private void drawGameOverScreen(Canvas canvas) {
@@ -303,6 +344,32 @@ public class GameView extends View implements SensorEventListener {
         paint.setTextSize(50f);
         canvas.drawText("Distance parcourue : " + score + " m", 100, 500, paint);
         canvas.drawText("Touchez pour rejouer", 100, 700, paint);
+        if (newRecord) {
+            paint.setColor(Color.parseColor("#FFD700"));
+            paint.setTextSize(60f);
+            canvas.drawText("NOUVEAU RECORD !", 100, 600, paint);
+        } else {
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(40f);
+            canvas.drawText("Record : " + bestScore + " m", 100, 600, paint);
+        }
+        drawButton(canvas, rankingButton, "Classements", Color.parseColor("#FF8C00"));
+    }
+
+    public boolean handleBack() {
+        switch (gameState) {
+            case PLAYING:
+                pauseGame();
+                return true;
+            case PAUSED:
+                resumeGame();
+                return true;
+            case RANKING:
+                gameState = GameState.START;
+                return true;
+            default:
+                return false;
+        }
     }
 
     @Override
@@ -315,18 +382,31 @@ public class GameView extends View implements SensorEventListener {
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 if (gameState == GameState.START || gameState == GameState.GAME_OVER) {
-                    resetPlayer();
-                    obstacles.clear();
-                    spawnCounter = 0;
-                    score = 0;
-                    distance = 0f;
-                    speed = 1f;
-                    resetNitro();
-                    gameState = GameState.PLAYING;
-                    performClick();
+                    boolean tooSoon = gameState == GameState.GAME_OVER
+                            && SystemClock.uptimeMillis() - gameOverTime < 800;
+                    if (tooSoon) {
+                    } else if (rankingButton.contains(event.getX(), event.getY())) {
+                        refreshScores();
+                        gameState = GameState.RANKING;
+                    } else {
+                        resetPlayer();
+                        obstacles.clear();
+                        spawnCounter = 0;
+                        score = 0;
+                        distance = 0f;
+                        speed = 1f;
+                        newRecord = false;
+                        resetNitro();
+                        gameState = GameState.PLAYING;
+                        performClick();
+                    }
+                } else if (gameState == GameState.RANKING) {
+                    if (rankingButton.contains(event.getX(), event.getY())) {
+                        gameState = GameState.START;
+                    }
                 } else if (gameState == GameState.PLAYING) {
                     if (pauseButton.contains(event.getX(), event.getY())) {
-                        pauseGame();     // le bouton ne déclenche ni swipe ni nitro
+                        pauseGame();
                     } else {
                         downX = event.getX();
                         downY = event.getY();
@@ -404,6 +484,7 @@ public class GameView extends View implements SensorEventListener {
         resumeButton.set(left, getHeight() * 0.40f, left + bw, getHeight() * 0.40f + bh);
         menuButton.set(left, getHeight() * 0.40f + bh + 24 * dp,
                 left + bw, getHeight() * 0.40f + 2 * bh + 24 * dp);
+        rankingButton.set(left, getHeight() - 56 * dp - bh, left + bw, getHeight() - 56 * dp);
     }
 
     private void resetPlayer() {
