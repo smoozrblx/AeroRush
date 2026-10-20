@@ -137,7 +137,6 @@ public class GameView extends View implements SensorEventListener{
                     gameState = GameState.GAME_OVER;
                     return;
                 }
-                int spawnFrequency = 45;
 
                 // Génération des obstacles
                 updateSpawnFrequency();
