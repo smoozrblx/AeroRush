@@ -18,7 +18,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 
-public class GameView extends View {
+public class GameView extends View implements SensorEventListener{
 
     private final Paint paint;
 
@@ -159,12 +159,13 @@ public class GameView extends View {
                         iterator.remove();
                     }
                 }
-            if (Math.abs(tilt) > DEAD_ZONE) {
-                playerX += tilt * SENSITIVITY;
-            }
+                if (Math.abs(tilt) > DEAD_ZONE) {
+                    playerX += tilt * SENSITIVITY;
+                }
 
-            if (getWidth() > 0) {
-                playerX = Math.max(0f, Math.min(getWidth() - playerSize, playerX));
+                if (getWidth() > 0) {
+                    playerX = Math.max(0f, Math.min(getWidth() - playerSize, playerX));
+                }
             }
         }
     }
@@ -279,27 +280,27 @@ public class GameView extends View {
                     lastTouchY = event.getY();
                 }
                 return true;
-        int action = event.getAction();
-
-        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
-
-            if (gameState == GameState.START && action == MotionEvent.ACTION_DOWN) {
-                gameState = GameState.PLAYING;
-                performClick();
-            }
-            else if (gameState == GameState.PLAYING) {
-                playerX = event.getX() - (playerSize / 2);
-                playerY = event.getY() - (playerSize / 2);
-            }
-            else if (gameState == GameState.GAME_OVER && action == MotionEvent.ACTION_DOWN) {
-                playerX = 400f;
-                playerY = 1200f;
-                score = 0;
-                obstacles.clear();
-                spawnCounter = 0;
-                gameState = GameState.PLAYING;
-                performClick();
-            }
+//        int action = event.getAction();
+//
+//        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
+//
+//            if (gameState == GameState.START && action == MotionEvent.ACTION_DOWN) {
+//                gameState = GameState.PLAYING;
+//                performClick();
+//            }
+//            else if (gameState == GameState.PLAYING) {
+//                playerX = event.getX() - (playerSize / 2);
+//                playerY = event.getY() - (playerSize / 2);
+//            }
+//            else if (gameState == GameState.GAME_OVER && action == MotionEvent.ACTION_DOWN) {
+//                playerX = 400f;
+//                playerY = 1200f;
+//                score = 0;
+//                obstacles.clear();
+//                spawnCounter = 0;
+//                gameState = GameState.PLAYING;
+//                performClick();
+//            }
 
             case MotionEvent.ACTION_UP:
                 if (gameState == GameState.PLAYING && isSwiping && !moved) {
