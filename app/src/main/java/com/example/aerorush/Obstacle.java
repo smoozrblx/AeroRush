@@ -5,10 +5,6 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 
-/**
- * Un obstacle : immeuble, avion ennemi ou oiseau.
- * Sa chute dépend du défilement fourni par GameView (vitesse du joueur, nitro, difficulté).
- */
 public class Obstacle {
 
     public enum Type { BUILDING, PLANE, BIRD }
@@ -16,9 +12,9 @@ public class Obstacle {
     public final Type type;
     private final RectF bounds = new RectF();
     private final RectF hitbox = new RectF();
-    private final float fallFactor;   // un avion ennemi vient vers nous : il descend plus vite
-    private float vx;                 // dérive latérale (oiseaux, avions)
-    private float phase;              // animation (battement d'ailes)
+    private final float fallFactor;
+    private float vx;
+    private float phase;
 
     public Obstacle(Type type, float x, float y, float w, float h, float vx) {
         this.type = type;
@@ -28,21 +24,15 @@ public class Obstacle {
         this.phase = (float) (Math.random() * Math.PI * 2);
     }
 
-    /** dy = défilement du décor pendant cette image, en pixels. */
     public void update(float dy, int screenWidth) {
         bounds.offset(vx, dy * fallFactor);
         if (bounds.left < 0 || bounds.right > screenWidth) {
-            vx = -vx;   // rebond sur les bords
+            vx = -vx;
             bounds.offset(vx * 2, 0);
         }
         phase += type == Type.BIRD ? 0.35f : 0f;
     }
 
-    /**
-     * Collision avec une hitbox réduite : on ne compte que le « cœur » de l'obstacle.
-     * Un crash ressenti comme injuste (frôlement d'un pixel) frustre davantage qu'un léger
-     * manque de rigueur.
-     */
     public boolean collidesWith(RectF player) {
         float insetX = bounds.width() * (type == Type.BUILDING ? 0.04f : 0.22f);
         float insetY = bounds.height() * (type == Type.BUILDING ? 0.04f : 0.22f);

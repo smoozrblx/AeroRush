@@ -7,10 +7,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Classement local (5 meilleures distances) et préférences, via SharedPreferences.
- * Aucun pseudo à saisir : on évite toute saisie de texte.
- */
 public class ScoreManager {
 
     private static final String PREFS = "aerorush_prefs";
@@ -24,7 +20,6 @@ public class ScoreManager {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    /** Scores triés du meilleur au moins bon. */
     public List<Integer> getTopScores() {
         List<Integer> list = new ArrayList<>();
         String saved = prefs.getString(KEY_TOP, "");
@@ -33,14 +28,12 @@ public class ScoreManager {
                 try {
                     list.add(Integer.parseInt(part));
                 } catch (NumberFormatException ignored) {
-                    // donnée corrompue : on l'ignore plutôt que de planter
                 }
             }
         }
         return list;
     }
 
-    /** Enregistre le score ; renvoie true s'il bat le record. */
     public boolean addScore(int score) {
         List<Integer> list = getTopScores();
         int oldBest = list.isEmpty() ? 0 : list.get(0);

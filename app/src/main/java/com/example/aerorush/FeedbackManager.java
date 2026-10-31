@@ -31,7 +31,6 @@ public class FeedbackManager {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build();
         soundPool = new SoundPool.Builder().setMaxStreams(4).setAudioAttributes(attrs).build();
-        // Le chargement est asynchrone : on ne joue un son qu'une fois prêt
         soundPool.setOnLoadCompleteListener((sp, id, status) -> {
             if (status == 0) loaded.add(id);
         });
@@ -41,25 +40,21 @@ public class FeedbackManager {
         sDenied = soundPool.load(context, R.raw.denied, 1);
     }
 
-    /** Crash : vibration longue et forte + explosion. */
     public void onCrash() {
         vibratePattern(new long[]{0, 120, 60, 300});
         play(sCrash, 1f);
     }
 
-    /** Nitro accepté : vibration brève + montée en régime. */
     public void onNitro() {
         vibrate(80);
         play(sNitro, 0.9f);
     }
 
-    /** Nitro refusé (en recharge) : petit « non » sonore et haptique. */
     public void onNitroDenied() {
         vibrate(25);
         play(sDenied, 0.6f);
     }
 
-    /** Validation d'un bouton / changement d'écran. */
     public void onClick() {
         play(sClick, 0.5f);
     }
@@ -73,7 +68,7 @@ public class FeedbackManager {
     }
 
     private boolean canVibrate() {
-        return vibrator != null && vibrator.hasVibrator();   // la plupart des tablettes n'en ont pas
+        return vibrator != null && vibrator.hasVibrator();
     }
 
     private void vibrate(long ms) {

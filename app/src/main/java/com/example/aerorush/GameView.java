@@ -23,39 +23,30 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 
-/**
- * Vue de jeu d'AeroRush : boucle update/draw, machine à états, contrôles
- * (accéléromètre, swipe de vitesse, double tap nitro) et rendu Canvas.
- */
 public class GameView extends View implements SensorEventListener {
 
     public enum GameState { START, PLAYING, PAUSED, RANKING, GAME_OVER }
 
-    // ---------- Couleurs (reprises du logo : bleu, blanc, orange) ----------
     private static final int SKY_TOP = Color.parseColor("#2F6BFF");
     private static final int SKY = Color.parseColor("#5B8DFF");
     private static final int ORANGE = Color.parseColor("#FF8C00");
     private static final int NAVY = Color.parseColor("#1B2A4A");
     private static final int GOLD = Color.parseColor("#FFD700");
 
-    // ---------- Contrôles : accéléromètre ----------
-    private static final float ALPHA = 0.8f;        // filtre passe-bas (lisse les tremblements)
-    private static final float DEAD_ZONE = 0.6f;    // m/s² ignorés autour de la position neutre
-    private static final float MAX_TILT = 7f;       // au-delà, la vitesse latérale n'augmente plus
+    private static final float ALPHA = 0.8f;
+    private static final float DEAD_ZONE = 0.6f;
+    private static final float MAX_TILT = 7f;
 
-    // ---------- Contrôles : vitesse par swipe ----------
     private static final float MIN_SPEED = 0.6f;
     private static final float MAX_SPEED = 2.2f;
 
-    // ---------- Nitro ----------
     private static final long DOUBLE_TAP_MS = 300;
     private static final long NITRO_DURATION_MS = 2000;
     private static final long NITRO_COOLDOWN_MS = 5000;
     private static final float NITRO_MULTIPLIER = 2f;
 
-    // ---------- Divers ----------
-    private static final long GAME_OVER_GUARD_MS = 800;   // ignore les taps frénétiques juste après un crash
-    private static final int TUTORIAL_FRAMES = 3 * 180;   // 3 étapes de 3 s à 60 images/s
+    private static final long GAME_OVER_GUARD_MS = 800;
+    private static final int TUTORIAL_FRAMES = 3 * 180;
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Random random = new Random();
@@ -70,31 +61,25 @@ public class GameView extends View implements SensorEventListener {
 
     private GameState gameState = GameState.START;
 
-    // Joueur (coordonnées du centre de l'avion)
     private float playerX, playerY, playerSize;
     private final RectF playerHitbox = new RectF();
     private float tilt = 0f;
 
-    // Progression
     private float speed = 1f;
     private float distance = 0f;
     private int score = 0;
     private int playFrames = 0;
     private float spawnAccumulator = 0f;
 
-    // Nitro
     private long lastTapTime = 0, nitroEndTime = 0, nitroReadyTime = 0;
 
-    // Gestes
     private float downX, downY, lastTouchY;
     private boolean moved = false, isSwiping = false;
 
-    // Monde
     private final List<Obstacle> obstacles = new ArrayList<>();
-    private final float[][] clouds = new float[6][3];      // x, y, taille
-    private final float[][] streaks = new float[14][2];    // lignes de vitesse
+    private final float[][] clouds = new float[6][3];
+    private final float[][] streaks = new float[14][2];
 
-    // Pause / scores / tutoriel
     private long pauseStartTime = 0, gameOverTime = 0;
     private float crashX, crashY;
     private List<Integer> topScores = new ArrayList<>();
@@ -102,11 +87,10 @@ public class GameView extends View implements SensorEventListener {
     private boolean newRecord = false;
     private boolean showTutorial;
 
-    // Boutons
     private final RectF pauseButton = new RectF();
     private final RectF resumeButton = new RectF();
     private final RectF menuButton = new RectF();
-    private final RectF bottomButton = new RectF();   // « Classements » ou « Retour »
+    private final RectF bottomButton = new RectF();
     private final RectF helpButton = new RectF();
 
     private final Runnable gameLoop = new Runnable() {
@@ -114,7 +98,7 @@ public class GameView extends View implements SensorEventListener {
         public void run() {
             update();
             invalidate();
-            postDelayed(this, 16);   // ~60 images/s
+            postDelayed(this, 16);
         }
     };
 
@@ -133,10 +117,6 @@ public class GameView extends View implements SensorEventListener {
         }
         setKeepScreenOn(true);
     }
-
-    // =====================================================================
-    //  Cycle de vie (appelé par MainActivity)
-    // =====================================================================
 
     public void startGame() {
         removeCallbacks(gameLoop);
@@ -161,7 +141,6 @@ public class GameView extends View implements SensorEventListener {
         feedback.release();
     }
 
-    /** Bouton retour du système. Renvoie false si l'app peut se fermer. */
     public boolean handleBack() {
         switch (gameState) {
             case PLAYING:
@@ -177,10 +156,6 @@ public class GameView extends View implements SensorEventListener {
                 return false;
         }
     }
-
-    // =====================================================================
-    //  États
-    // =====================================================================
 
     private void newGame() {
         playerX = getWidth() / 2f;
@@ -205,11 +180,10 @@ public class GameView extends View implements SensorEventListener {
     }
 
     private void resumeGame() {
-        // Le nitro se base sur l'horloge : on décale ses échéances de la durée de la pause
         long pausedFor = SystemClock.uptimeMillis() - pauseStartTime;
         if (nitroEndTime > 0) nitroEndTime += pausedFor;
         if (nitroReadyTime > 0) nitroReadyTime += pausedFor;
-        tilt = 0f;          // pas de saut avec une inclinaison périmée
+        tilt = 0f;
         lastTapTime = 0;
         gameState = GameState.PLAYING;
     }
@@ -222,7 +196,7 @@ public class GameView extends View implements SensorEventListener {
         crashY = playerY;
         newRecord = scoreManager.addScore(score);
         refreshScores();
-        if (showTutorial) {               // le tutoriel n'est montré qu'à la première partie
+        if (showTutorial) {
             showTutorial = false;
             scoreManager.setTutorialDone(true);
         }
@@ -234,10 +208,6 @@ public class GameView extends View implements SensorEventListener {
         bestScore = topScores.isEmpty() ? 0 : topScores.get(0);
     }
 
-    // =====================================================================
-    //  Nitro
-    // =====================================================================
-
     private boolean isNitroActive() {
         return SystemClock.uptimeMillis() < nitroEndTime;
     }
@@ -246,7 +216,6 @@ public class GameView extends View implements SensorEventListener {
         return isNitroActive() ? speed * NITRO_MULTIPLIER : speed;
     }
 
-    /** 0 = vient d'être utilisé, 1 = prêt. */
     private float nitroCharge() {
         if (nitroReadyTime == 0) return 1f;
         float elapsed = SystemClock.uptimeMillis() - (nitroReadyTime - NITRO_COOLDOWN_MS);
@@ -260,7 +229,7 @@ public class GameView extends View implements SensorEventListener {
             nitroReadyTime = now + NITRO_COOLDOWN_MS;
             feedback.onNitro();
         } else {
-            feedback.onNitroDenied();   // feedback explicite : le geste a été reconnu, mais pas dispo
+            feedback.onNitroDenied();
         }
     }
 
@@ -268,40 +237,34 @@ public class GameView extends View implements SensorEventListener {
         return showTutorial && playFrames < TUTORIAL_FRAMES;
     }
 
-    // =====================================================================
-    //  Mise à jour
-    // =====================================================================
-
     private void update() {
         int w = getWidth(), h = getHeight();
         if (w == 0 || h == 0) return;
 
         if (gameState != GameState.PLAYING) {
-            if (gameState == GameState.START) scrollScenery(h * 0.004f, w, h);   // décor animé à l'accueil
+            if (gameState == GameState.START) scrollScenery(h * 0.004f, w, h);
             return;
         }
 
         playFrames++;
         float difficulty = 1f + Math.min(score / 4000f, 0.8f);
-        float dy = h * 0.006f * difficulty * getEffectiveSpeed();   // défilement de cette image
+        float dy = h * 0.006f * difficulty * getEffectiveSpeed();
 
         distance += getEffectiveSpeed() * difficulty;
         score = (int) (distance / 2f);
 
-        // Déplacement latéral : zone morte, puis vitesse proportionnelle à l'inclinaison
         float t = Math.abs(tilt) - DEAD_ZONE;
         if (t > 0) {
             t = Math.min(t, MAX_TILT);
             playerX += Math.signum(tilt) * t * w * 0.0045f;
         }
         float half = playerSize / 2f;
-        playerX = Math.max(half, Math.min(w - half, playerX));   // bloqué contre les bords
+        playerX = Math.max(half, Math.min(w - half, playerX));
         playerHitbox.set(playerX - playerSize * 0.30f, playerY - playerSize * 0.40f,
                 playerX + playerSize * 0.30f, playerY + playerSize * 0.35f);
 
         scrollScenery(dy, w, h);
 
-        // Apparition des obstacles (pas pendant le tutoriel, pour apprendre au calme)
         if (!isTutorialActive()) {
             spawnAccumulator += dy;
             float gap = h * (0.40f - 0.14f * Math.min(score / 2500f, 1f));
@@ -342,7 +305,7 @@ public class GameView extends View implements SensorEventListener {
                 vx = (random.nextBoolean() ? 1 : -1) * (1.5f + random.nextFloat() * 1.5f) * dp;
                 break;
             default:
-                ow = w * (0.25f + random.nextFloat() * 0.27f);   // max 52 % : il reste toujours un passage
+                ow = w * (0.25f + random.nextFloat() * 0.27f);
                 oh = ow * (0.55f + random.nextFloat() * 0.3f);
         }
         float x = random.nextFloat() * (w - ow);
@@ -351,7 +314,7 @@ public class GameView extends View implements SensorEventListener {
 
     private void scrollScenery(float dy, int w, int h) {
         for (float[] c : clouds) {
-            c[1] += dy * 0.5f;   // parallaxe : les nuages défilent moins vite que le sol
+            c[1] += dy * 0.5f;
             if (c[1] - c[2] > h) resetCloud(c, w, false);
         }
         for (float[] s : streaks) {
@@ -369,15 +332,9 @@ public class GameView extends View implements SensorEventListener {
         c[1] = anywhere ? random.nextFloat() * getHeight() : -c[2] - random.nextFloat() * getHeight() * 0.5f;
     }
 
-    // =====================================================================
-    //  Capteur
-    // =====================================================================
-
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event == null || event.sensor.getType() != Sensor.TYPE_ACCELEROMETER) return;
-        // Les axes du capteur suivent l'orientation NATURELLE de l'appareil (paysage sur
-        // beaucoup de tablettes) : on les ramène dans le repère de l'écran.
         float raw;
         switch (displayRotation) {
             case Surface.ROTATION_90:  raw = event.values[1];  break;
@@ -390,10 +347,6 @@ public class GameView extends View implements SensorEventListener {
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) { }
-
-    // =====================================================================
-    //  Dimensions
-    // =====================================================================
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
@@ -411,7 +364,6 @@ public class GameView extends View implements SensorEventListener {
             s[1] = random.nextFloat() * h;
         }
 
-        // Boutons dans la moitié basse : zone atteignable au pouce, à une main
         float size = 64 * dp, margin = 16 * dp;
         pauseButton.set(w - margin - size, h - margin - size, w - margin, h - margin);
         helpButton.set(w - margin - 52 * dp, margin + 8 * dp, w - margin, margin + 60 * dp);
@@ -421,10 +373,6 @@ public class GameView extends View implements SensorEventListener {
         menuButton.set(left, resumeButton.bottom + 20 * dp, left + bw, resumeButton.bottom + 20 * dp + bh);
         bottomButton.set(left, h - 40 * dp - bh, left + bw, h - 40 * dp);
     }
-
-    // =====================================================================
-    //  Dessin
-    // =====================================================================
 
     @Override
     protected void onDraw(Canvas canvas) {
@@ -449,7 +397,6 @@ public class GameView extends View implements SensorEventListener {
     private void drawWorld(Canvas c, boolean animate) {
         drawBackground(c);
 
-        // Lignes de vitesse : plus on va vite, plus elles sont visibles
         float eff = getEffectiveSpeed();
         int alpha = (int) Math.min(170, Math.max(0, (eff - 0.8f) * 110));
         if (alpha > 0) {
@@ -461,7 +408,6 @@ public class GameView extends View implements SensorEventListener {
 
         for (Obstacle o : obstacles) o.draw(c, paint, dp);
 
-        // Avion du joueur, légèrement incliné dans le sens du virage (feedback de l'accéléromètre)
         float bank = Math.max(-14f, Math.min(14f, tilt * 2f));
         c.save();
         c.rotate(bank, playerX, playerY);
@@ -490,13 +436,11 @@ public class GameView extends View implements SensorEventListener {
         text(c, "Record " + Math.max(bestScore, score) + " m", m, top + 24 * dp, 14,
                 Color.argb(220, 255, 255, 255), Paint.Align.LEFT, false);
 
-        // Vitesse
         text(c, String.format(Locale.FRANCE, "x%.1f", getEffectiveSpeed()), getWidth() - m, top, 26,
                 isNitroActive() ? GOLD : Color.WHITE, Paint.Align.RIGHT, true);
         text(c, "vitesse", getWidth() - m, top + 20 * dp, 13,
                 Color.argb(220, 255, 255, 255), Paint.Align.RIGHT, false);
 
-        // Jauge nitro : le joueur sait toujours si son boost est disponible
         float bx = m, by = top + 40 * dp, bw = 120 * dp, bh = 10 * dp;
         float charge = isNitroActive() ? 1f : nitroCharge();
         paint.setStyle(Paint.Style.FILL);
@@ -519,10 +463,9 @@ public class GameView extends View implements SensorEventListener {
         c.drawRoundRect(cx + 3 * dp, cy - h, cx + 3 * dp + bar, cy + h, 2 * dp, 2 * dp, paint);
     }
 
-    /** Tutoriel animé de la première partie : découvrabilité des trois gestes. */
     private void drawTutorial(Canvas c) {
         int step = playFrames / 180;
-        float t = (playFrames % 180) / 60f;   // secondes écoulées dans l'étape
+        float t = (playFrames % 180) / 60f;
         float w = getWidth(), cx = w / 2f, cy = getHeight() * 0.40f;
 
         paint.setStyle(Paint.Style.FILL);
@@ -565,7 +508,6 @@ public class GameView extends View implements SensorEventListener {
         }
         text(c, title, cx, cy - 75 * dp, 18, Color.WHITE, Paint.Align.CENTER, true);
 
-        // Progression du tutoriel
         for (int i = 0; i < 3; i++) {
             paint.setColor(i == step ? ORANGE : Color.argb(120, 255, 255, 255));
             c.drawCircle(cx + (i - 1) * 18 * dp, cy + 72 * dp, 5 * dp, paint);
@@ -576,7 +518,6 @@ public class GameView extends View implements SensorEventListener {
         drawBackground(c);
         float cx = getWidth() / 2f, h = getHeight();
 
-        // Titre aux couleurs du logo
         paint.setTextSize(52 * dp);
         paint.setTypeface(Typeface.DEFAULT_BOLD);
         float wAero = paint.measureText("Aero"), wRush = paint.measureText("Rush");
@@ -584,7 +525,6 @@ public class GameView extends View implements SensorEventListener {
         text(c, "Aero", x0, h * 0.22f, 52, Color.WHITE, Paint.Align.LEFT, true);
         text(c, "Rush", x0 + wAero, h * 0.22f, 52, ORANGE, Paint.Align.LEFT, true);
 
-        // Avion qui flotte doucement
         float bob = (float) Math.sin(SystemClock.uptimeMillis() / 400.0) * 8 * dp;
         Sprites.drawPlane(c, paint, cx, h * 0.42f + bob, Math.max(playerSize * 1.6f, 120 * dp), true, Color.WHITE, SKY_TOP);
 
@@ -594,7 +534,6 @@ public class GameView extends View implements SensorEventListener {
 
         drawButton(c, bottomButton, "Classements", NAVY);
 
-        // « ? » : rejouer le tutoriel à la prochaine partie
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(Color.argb(150, 27, 42, 74));
         c.drawRoundRect(helpButton, 14 * dp, 14 * dp, paint);
@@ -614,7 +553,6 @@ public class GameView extends View implements SensorEventListener {
     private void drawGameOverScreen(Canvas c) {
         drawWorld(c, false);
 
-        // Explosion à l'endroit du crash
         float t = Math.min(1f, (SystemClock.uptimeMillis() - gameOverTime) / 450f);
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(Color.argb((int) (220 * (1 - t)), 255, 140, 0));
@@ -623,7 +561,7 @@ public class GameView extends View implements SensorEventListener {
         c.drawCircle(crashX, crashY, playerSize * (0.2f + 0.8f * t), paint);
 
         c.drawColor(Color.argb((int) (190 * t), 90, 0, 0));
-        if (t < 1f) return;   // on laisse l'explosion se jouer avant d'afficher le bilan
+        if (t < 1f) return;
 
         float cx = getWidth() / 2f, h = getHeight();
         text(c, "CRASH !", cx, h * 0.24f, 46, Color.WHITE, Paint.Align.CENTER, true);
@@ -667,7 +605,6 @@ public class GameView extends View implements SensorEventListener {
         text(c, label, r.centerX(), r.centerY() + 8 * dp, 22, Color.WHITE, Paint.Align.CENTER, true);
     }
 
-    /** Texte avec une taille en dp : même rendu sur téléphone et tablette. */
     private void text(Canvas c, String s, float x, float y, float sizeDp, int color, Paint.Align align, boolean bold) {
         paint.setStyle(Paint.Style.FILL);
         paint.setTextSize(sizeDp * dp);
@@ -677,10 +614,6 @@ public class GameView extends View implements SensorEventListener {
         c.drawText(s, x, y, paint);
         paint.setTextAlign(Paint.Align.LEFT);
     }
-
-    // =====================================================================
-    //  Toucher
-    // =====================================================================
 
     @Override
     public boolean performClick() {
@@ -698,7 +631,7 @@ public class GameView extends View implements SensorEventListener {
                         if (bottomButton.contains(x, y)) {
                             gameState = GameState.RANKING;
                         } else if (helpButton.contains(x, y)) {
-                            showTutorial = !showTutorial;   // bascule : revoir le tutoriel
+                            showTutorial = !showTutorial;
                             scoreManager.setTutorialDone(!showTutorial);
                         } else {
                             newGame();
@@ -729,14 +662,14 @@ public class GameView extends View implements SensorEventListener {
                             resumeGame();
                             feedback.onClick();
                         } else if (menuButton.contains(x, y)) {
-                            gameState = GameState.START;   // abandon : le score n'est pas enregistré
+                            gameState = GameState.START;
                             feedback.onClick();
                         }
                         break;
 
                     case PLAYING:
                         if (pauseButton.contains(x, y)) {
-                            pauseGame();   // le bouton ne déclenche ni swipe ni nitro
+                            pauseGame();
                             feedback.onClick();
                         } else {
                             downX = x;
@@ -752,8 +685,7 @@ public class GameView extends View implements SensorEventListener {
             case MotionEvent.ACTION_MOVE:
                 if (gameState == GameState.PLAYING && isSwiping) {
                     if (Math.abs(x - downX) > touchSlop || Math.abs(y - downY) > touchSlop) moved = true;
-                    if (moved) {   // sous le seuil, on ne touche pas à la vitesse (tap en cours)
-                        // Indépendant de la taille d'écran : un glissement de 60 % de la hauteur couvre toute la plage
+                    if (moved) {
                         float dyRatio = (lastTouchY - y) / (getHeight() * 0.6f);
                         speed += dyRatio * (MAX_SPEED - MIN_SPEED);
                         speed = Math.max(MIN_SPEED, Math.min(MAX_SPEED, speed));

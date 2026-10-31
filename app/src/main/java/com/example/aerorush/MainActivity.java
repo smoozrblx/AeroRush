@@ -23,13 +23,11 @@ public class MainActivity extends AppCompatActivity {
         gameView = new GameView(this);
         setContentView(gameView);
 
-        // Plein écran : les barres système réapparaissent temporairement par un glissement depuis le bord
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), gameView);
         controller.hide(WindowInsetsCompat.Type.systemBars());
         controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
 
-        // Retour : pause en jeu, retour à l'accueil depuis le classement, sinon quitter
         backCallback = new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -53,7 +51,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        gameView.pauseGame();   // pause automatique (appel, notification, bouton Accueil)
+        gameView.pauseGame();
         gameView.stopSensor();
         gameView.stopGame();
     }
